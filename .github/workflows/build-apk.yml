@@ -32,41 +32,73 @@ jobs:
       - name: Extract Android project
         run: |
           ZIP="Beekaa-Bingo-Android-Monthly-License-Project.zip"
+
           if [ ! -f "$ZIP" ]; then
             echo "Project ZIP not found in repository root."
-            echo "Upload the project ZIP, then run this workflow again."
             exit 1
           fi
+
           unzip -q "$ZIP" -d extracted
-          find extracted -name build.gradle -print
+
           PROJECT_DIR="$(find extracted -name settings.gradle -print -quit | xargs dirname)"
+
           if [ -z "$PROJECT_DIR" ]; then
             echo "Android Gradle project not found."
             exit 1
           fi
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"  
-          
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Update embedded license public key
+        env:
+          NEW_PUBLIC_KEY: MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEArVEUl1e5y21Xl4414siO3u1vOU6ok33UpMkF37ioi+z++IdXZt+ZE0CuYxdWVQgIBYjTnPQJ7KqWttDPl2m+73vvq0h5KkeQoHLnFTPXTvN23qRx3LUJiTE9YR05qvaTaZTghVd4xo482CNSE/5Q9TSVcsPmhM+skNI5VNWPyoBWhtoFNZrVtWuHwpGJNsY4c/AQTqIXeinD/xvmnguBeDMQB7NahK26Aj2t1VbQKAqoUxUmzWie+O5lswlzZ9FaNY5tj4fqnmz7dLWuCGtHSSDWOcqzSj+0YiTsThgwQj/YueV4XzSRlmiCEmTCnuGa+7S1goYbXriyUQCzhvs06v7kVjxJgh/5aAL95ZTlFeJa4DV2GvUwzTycKbEqovIDhgNpqbjkwqzs8yiu8fHlaP/C+3mO6PvUTL/N/qXnJaHgXT/83EtWk5CCVotVrV1LcKBnY36VaLSp5X0QL6DMRQBaCI7QzSDSis6jfj+vb5w+LoxH4muJDJPjBjwFB2h5AgMBAAE=
+        run: |
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+          import sys
+
+          project = pathlib.Path(os.environ["PROJECT_DIR"])
+          key = os.environ["NEW_PUBLIC_KEY"].strip()
+
+          files = list(project.rglob("MainActivity.java"))
+
+          if not files:
+              print("ERROR: MainActivity.java was not found.")
+              sys.exit(1)
+
+          target = files[0]
+          source = target.read_text(encoding="utf-8")
+
+          pattern = r'(PUBLIC_KEY_B64\s*=\s*")[^"]+(")'
+
+          updated, count = re.subn(
+              pattern,
+              lambda match: match.group(1) + key + match.group(2),
+              source,
+              count=1
+          )
+
+          if count != 1:
+              print("ERROR: Could not safely locate the PUBLIC_KEY_B64 declaration.")
+              print("No APK will be built with an unverified key replacement.")
+              sys.exit(1)
+
+          target.write_text(updated, encoding="utf-8")
+
+          print("Successfully updated the public key in:", target)
+          PY
+
       - name: Create missing launcher icon
         run: |
           RES="$PROJECT_DIR/app/src/main/res"
-          mkdir -p "$RES/mipmap-mdpi"
-          mkdir -p "$RES/mipmap-hdpi"
-          mkdir -p "$RES/mipmap-xhdpi"
-          mkdir -p "$RES/mipmap-xxhdpi"
-          mkdir -p "$RES/mipmap-xxxhdpi"
 
           for D in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
-            case "$D" in
-              mdpi) S=48 ;;
-              hdpi) S=72 ;;
-              xhdpi) S=96 ;;
-              xxhdpi) S=144 ;;
-              xxxhdpi) S=192 ;;
-            esac
-
             mkdir -p "$RES/mipmap-$D"
+          done
 
-            cat > "$RES/mipmap-$D/ic_launcher.xml" <<'XML'
+          cat > "$RES/mipmap-mdpi/ic_launcher.xml" <<'XML'
           <vector xmlns:android="http://schemas.android.com/apk/res/android"
               android:width="48dp"
               android:height="48dp"
@@ -78,7 +110,6 @@ jobs:
                   android:pathData="M12,12h24v24h-24z"/>
           </vector>
           XML
-          done
 
       - name: Build debug APK
         run: gradle -p "$PROJECT_DIR" assembleDebug
