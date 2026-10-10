@@ -44,7 +44,41 @@ jobs:
             echo "Android Gradle project not found."
             exit 1
           fi
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"  
+          
+      - name: Create missing launcher icon
+        run: |
+          RES="$PROJECT_DIR/app/src/main/res"
+          mkdir -p "$RES/mipmap-mdpi"
+          mkdir -p "$RES/mipmap-hdpi"
+          mkdir -p "$RES/mipmap-xhdpi"
+          mkdir -p "$RES/mipmap-xxhdpi"
+          mkdir -p "$RES/mipmap-xxxhdpi"
+
+          for D in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            case "$D" in
+              mdpi) S=48 ;;
+              hdpi) S=72 ;;
+              xhdpi) S=96 ;;
+              xxhdpi) S=144 ;;
+              xxxhdpi) S=192 ;;
+            esac
+
+            mkdir -p "$RES/mipmap-$D"
+
+            cat > "$RES/mipmap-$D/ic_launcher.xml" <<'XML'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="48dp"
+              android:height="48dp"
+              android:viewportWidth="48"
+              android:viewportHeight="48">
+              <path android:fillColor="#167D5A"
+                  android:pathData="M0,0h48v48h-48z"/>
+              <path android:fillColor="#FFFFFF"
+                  android:pathData="M12,12h24v24h-24z"/>
+          </vector>
+          XML
+          done
 
       - name: Build debug APK
         run: gradle -p "$PROJECT_DIR" assembleDebug
